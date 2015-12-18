@@ -19,182 +19,189 @@ import org.urish.openal.jna.AL;
 public class SourceOutputStream extends OutputStream {
 
     /**
-     * 
+     *
      */
     private int CYCLIC_BUFFER_COUNT = 3;
 
     /**
-     * 
+     *
      */
     private final Source source;
-    
+
     /**
-     * 
+     *
      */
     private final AudioFormat format;
-    
+
     /**
-     * 
+     *
      */
     private Buffer[] buffers;
 
     /**
-     * 
+     *
      */
     private int queueHead = 0;
-    
+
     /**
-     * 
+     *
      */
     private int queueTail = 0;
 
     /**
-     * 
+     *
      */
     private long samplesProcessed = 0;
-    
+
     /**
-     * 
+     *
      */
     private final AL al;
 
     /**
-     * 
+     *
+     */
+    private boolean run = true;
+
+    /**
      * for compatibility
+     *
      * @param al
      * @param source
      * @param format
-     * @throws ALException 
+     * @throws ALException
      * @deprecated Use SourceOutputStream with the numberOfBuffer param
      */
     @Deprecated
     public SourceOutputStream(AL al, Source source, AudioFormat format) throws ALException {
-	super();
-	this.al = al;
-	this.source = source;
-	this.format = format;
-	initBuffers();
+        super();
+        this.al = al;
+        this.source = source;
+        this.format = format;
+        initBuffers();
     }
-    
+
     /**
-     * 
      * @param al
      * @param source
      * @param format
      * @param numberOfBuffer
-     * @throws ALException 
+     * @throws ALException
      */
-    public SourceOutputStream(AL al, Source source, AudioFormat format, int numberOfBuffer) throws ALException {	
-	super();
-	this.al = al;
-	this.source = source;
-	this.format = format;
-	setNumberOfBuffer(numberOfBuffer);
-	initBuffers();
+    public SourceOutputStream(AL al, Source source, AudioFormat format, int numberOfBuffer) throws ALException {
+        super();
+        this.al = al;
+        this.source = source;
+        this.format = format;
+        setNumberOfBuffer(numberOfBuffer);
+        initBuffers();
     }
 
     /**
      * Set number and buffer and initialize them
-     * @param numberOfBuffer 
+     *
+     * @param numberOfBuffer
      */
-    private void setNumberOfBuffer(int numberOfBuffer) throws ALException{
-	CYCLIC_BUFFER_COUNT = numberOfBuffer;
-	initBuffers();
+    private void setNumberOfBuffer(int numberOfBuffer) throws ALException {
+        CYCLIC_BUFFER_COUNT = numberOfBuffer;
+        initBuffers();
     }
-    
+
     /**
-     * 
      * @return The number of buffer
      */
-    public int getNumberOfBuffer(){
-	return CYCLIC_BUFFER_COUNT;
+    public int getNumberOfBuffer() {
+        return CYCLIC_BUFFER_COUNT;
     }
-    
+
     /**
      * Initialize buffers (empty buffers)
      */
-    private void initBuffers() throws ALException{
-	buffers = new Buffer[CYCLIC_BUFFER_COUNT];
-	for (int i = 0; i < buffers.length; i++) {
-	    buffers[i] = new Buffer(al);
-	}
-    }
-    
-    /**
-     * samplesProcessed/sampleRate/channels -> ms
-     * @return 
-     */
-    public long getSamplesProcessed(){
-	return this.samplesProcessed;
+    private void initBuffers() throws ALException {
+        buffers = new Buffer[CYCLIC_BUFFER_COUNT];
+        for (int i = 0; i < buffers.length; i++) {
+            buffers[i] = new Buffer(al);
+        }
     }
 
     /**
-     * 
+     * samplesProcessed/sampleRate/channels -> ms
+     *
+     * @return
+     */
+    public long getSamplesProcessed() {
+        return this.samplesProcessed;
+    }
+
+    /**
      * @param b
-     * @throws IOException 
+     * @throws IOException
      */
     @Override
     public void write(int b) throws IOException {
-	write(new byte[]{(byte) b}, 0, 1);
+        write(new byte[]{(byte) b}, 0, 1);
     }
 
     /**
-     * 
      * @param b
-     * @throws IOException 
+     * @throws IOException
      */
     @Override
     public void write(byte[] b) throws IOException {
-	write(b, 0, b.length);
+        write(b, 0, b.length);
     }
 
     /**
-     * 
      * @param b
      * @param off
      * @param len
-     * @throws IOException 
+     * @throws IOException
      */
     @Override
-    public void write(byte[] b, int off, int len) throws IOException {
-	try {
-	    int queueSize = source.getQueuedBufferCount();
-	    if (queueSize >= buffers.length) {
-		while (source.getProcessedBufferCount() == 0) {
-		    try {
-			Thread.sleep(20);
-		    } catch (InterruptedException e) {
-			throw new IOException("IO Operation interrupted", e);
-		    }
-		}
-		source.unqueueBuffer(buffers[queueTail]);
+    public synchronized void write(byte[] b, int off, int len) throws IOException {
+        try {
+            int queueSize = source.getQueuedBufferCount();
+            if (queueSize >= buffers.length) {
+                while (source.getProcessedBufferCount() == 0 && this.run) {
+                    try {
+                        this.wait(20);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+                if(this.run) {
+                    source.unqueueBuffer(buffers[queueTail]);
 
-		samplesProcessed += buffers[queueTail].getIntParam(AL.AL_SIZE) / (buffers[queueTail].getIntParam(AL.AL_BITS) / 8);
+                    samplesProcessed += buffers[queueTail].getIntParam(AL.AL_SIZE) / (buffers[queueTail].getIntParam(AL.AL_BITS) / 8);
 
-		queueTail = (queueTail + 1) % buffers.length;
-	    }
-	    if (off != 0) {
-		throw new IOException("Offsets other than 0 are not currently supported");
-	    }
-	    buffers[queueHead].addBufferData(format, b, len);
-	    source.queueBuffer(buffers[queueHead]);
-	    queueHead = (queueHead + 1) % buffers.length;
-	    if (source.getSourceState() == SourceState.INITIAL) {
-		source.play();
-	    }
-	} catch (ALException e) {
-	    throw new IOException(e);
-	}
+                    queueTail = (queueTail + 1) % buffers.length;
+                }
+            }
+            if(this.run) {
+                if (off != 0) {
+                    throw new IOException("Offsets other than 0 are not currently supported");
+                }
+                buffers[queueHead].addBufferData(format, b, len);
+                source.queueBuffer(buffers[queueHead]);
+                queueHead = (queueHead + 1) % buffers.length;
+                if (source.getSourceState() == SourceState.INITIAL) {
+                    source.play();
+                }
+            }
+        } catch (ALException e) {
+            throw new IOException(e);
+        }
     }
 
     /**
-     * 
-     * @throws IOException 
+     * @throws IOException
      */
     @Override
     public void close() throws IOException {
-	for (Buffer buffer : buffers) {
-	    buffer.close();
-	}
+        this.run = false;
+        this.notify();
+        for (Buffer buffer : buffers) {
+            buffer.close();
+        }
     }
 }
