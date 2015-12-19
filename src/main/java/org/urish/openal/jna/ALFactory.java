@@ -13,9 +13,10 @@ public class ALFactory {
 	public final ALExt alext;
 
 	public ALFactory() {
-		al = (AL) Native.loadLibrary(DEFAULT_DLL_NAME, AL.class);
-		alc = (ALC) Native.loadLibrary(DEFAULT_DLL_NAME, ALC.class);
-		alext = (ALExt) Native.loadLibrary(DEFAULT_DLL_NAME, ALExt.class);
+		String dllName = (System.getProperty("os.name").startsWith("Windows")) ? "OpenAL32":DEFAULT_DLL_NAME;
+		al = (AL) Native.loadLibrary(dllName, AL.class);
+		alc = (ALC) Native.loadLibrary(dllName, ALC.class);
+		alext = (ALExt) Native.loadLibrary(dllName, ALExt.class);
 	}
 
 	public ALFactory(File dllPath) throws FileNotFoundException {

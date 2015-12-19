@@ -167,6 +167,7 @@ public class SourceOutputStream extends OutputStream {
                         this.wait(20);
                     } catch (InterruptedException e) {
                         e.printStackTrace();
+                        if(!this.run) break;
                     }
                 }
                 if(this.run) {
@@ -197,7 +198,7 @@ public class SourceOutputStream extends OutputStream {
      * @throws IOException
      */
     @Override
-    public void close() throws IOException {
+    public synchronized void close() throws IOException {
         this.run = false;
         this.notify();
         for (Buffer buffer : buffers) {
